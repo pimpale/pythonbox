@@ -6,10 +6,10 @@ use actix_web::{error, App, HttpResponse, HttpServer};
 use bollard::Docker;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
+use derive_more::Display;
 
 mod handlers;
-use derive_more::Display;
-use handlers::run_code;
+mod utils;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Display)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -20,7 +20,6 @@ pub enum AppError {
     BadRequest,
     NotFound,
     InvalidBase64,
-    InvalidTarGz,
     Unknown,
 }
 
@@ -35,7 +34,6 @@ impl error::ResponseError for AppError {
             AppError::Unauthorized => StatusCode::UNAUTHORIZED,
             AppError::BadRequest => StatusCode::BAD_REQUEST,
             AppError::InvalidBase64 => StatusCode::BAD_REQUEST,
-            AppError::InvalidTarGz => StatusCode::BAD_REQUEST,
             AppError::NotFound => StatusCode::NOT_FOUND,
             AppError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -55,14 +53,19 @@ async fn main() -> std::io::Result<()> {
 
     let Opts { port } = Opts::parse();
 
+    // create docker connection
     let docker = Docker::connect_with_local_defaults().unwrap();
-    info!(target:"docker", "connected to docker!");
-    docker.ping().unwrap();
-    info!(target:"docker", "able to ping docker!");
+    info!(target:"pythonbox::docker", "connected to docker!");
+
+    // check we can ping
+    let docker_ping_result = docker.ping().await.unwrap();
+    info!(target:"docker", "docker ping: {}", docker_ping_result);
+
+    // start server
     HttpServer::new(move || {
         App::new()
             .app_data(actix_web::web::Data::new(docker.clone()))
-            .service(run_code)
+            .service(handlers::run_code)
     })
     .bind((Ipv4Addr::LOCALHOST, port))?
     .run()
