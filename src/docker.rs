@@ -4,7 +4,7 @@ use bollard::{
         RemoveContainerOptions, StartContainerOptions, UpdateContainerOptions,
         UploadToContainerOptions,
     },
-    models::{ContainerState, HostConfig},
+    models::{ContainerInspectResponse, ContainerState, HostConfig},
     Docker,
 };
 use log::{error, info};
@@ -50,7 +50,7 @@ pub async fn run_code(
     let container_name = utils::random_string();
 
     // create docker container
-    let _ = docker
+    let create_result = docker
         .create_container(
             Some(CreateContainerOptions {
                 name: container_name.as_str(),
@@ -61,22 +61,22 @@ pub async fn run_code(
                 working_dir: Some("/opt"),
                 network_disabled: Some(true),
                 host_config: Some(HostConfig {
-                    auto_remove: Some(true),
                     ..Default::default()
                 }),
                 ..Default::default()
             },
         )
-        .await
-        .map_err(|x| {
-            error!(target:"pythonbox::docker", "couldn't create container! reason: {}", x);
-            AppError::InternalServerError
-        })?;
+        .await;
+
+    if let Err(x) = create_result {
+        error!(target:"pythonbox::docker", "couldn't create container! reason: {}", x);
+        return Err(AppError::InternalServerError);
+    }
 
     info!(target:"pythonbox::run_code", "created container {}", container_name.as_str());
 
     // set resource usage limits
-    let result = docker
+    let update_result = docker
         .update_container(
             container_name.as_str(),
             UpdateContainerOptions::<String> {
@@ -89,7 +89,7 @@ pub async fn run_code(
         )
         .await;
 
-    if let Err(x) = result {
+    if let Err(x) = update_result {
         error!(target:"pythonbox::docker", "couldn't set resource usage limits! reason:{}", x);
         try_remove_container(container_name.as_str(), docker).await;
         return Err(AppError::InternalServerError);
@@ -98,7 +98,7 @@ pub async fn run_code(
     info!(target:"pythonbox::run_code", "limited container {}", container_name.as_str());
 
     // upload our tar.gz to the container
-    let result = docker
+    let upload_result = docker
         .upload_to_container(
             container_name.as_str(),
             Some(UploadToContainerOptions {
@@ -109,7 +109,7 @@ pub async fn run_code(
         )
         .await;
 
-    if let Err(x) = result {
+    if let Err(x) = upload_result {
         error!(target:"pythonbox::docker", "couldn't upload data! reason: {}", x);
         try_remove_container(container_name.as_str(), docker).await;
         return Err(AppError::InternalServerError);
@@ -118,14 +118,14 @@ pub async fn run_code(
     info!(target:"pythonbox::run_code", "uploaded code to container {}", container_name.as_str());
 
     // start container
-    let result = docker
+    let start_result = docker
         .start_container(
             container_name.as_str(),
             None::<StartContainerOptions<String>>,
         )
         .await;
 
-    if let Err(x) = result {
+    if let Err(x) = start_result {
         error!(target:"pythonbox::docker", "couldn't start container! reason: {}", x);
         try_remove_container(container_name.as_str(), docker).await;
         return Err(AppError::InternalServerError);
@@ -183,20 +183,30 @@ pub async fn run_code(
     // inspect container
     let inspect_result = docker
         .inspect_container(container_name.as_str(), None)
-        .await
-        .map_err(|_| {
-            error!(target:"pythonbox::docker", "couldn't inspect container!");
-            AppError::InternalServerError
-        })?;
+        .await;
+
+    if let Err(x) = inspect_result {
+        error!(target:"pythonbox::docker", "couldn't inspect container! reason: {}", x);
+        try_remove_container(container_name.as_str(), docker).await;
+        return Err(AppError::InternalServerError);
+    }
+
+    let exit_code = match inspect_result {
+        Ok(ContainerInspectResponse {
+            state: Some(ContainerState { exit_code, .. }),
+            ..
+        }) => exit_code,
+        _ => None,
+    };
 
     let response = RunCodeResponse {
         stdout: stdout,
         stderr: stderr,
-        exit_code: match inspect_result.state {
-            Some(ContainerState { exit_code, .. }) => exit_code,
-            None => None,
-        },
+        exit_code,
     };
+
+    // now normally try to remove container
+    try_remove_container(container_name.as_str(), docker).await;
 
     return Ok(response);
 }
