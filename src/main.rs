@@ -1,13 +1,14 @@
 use std::net::Ipv4Addr;
 
-use log::{info};
 use actix_web::http::StatusCode;
 use actix_web::{error, App, HttpResponse, HttpServer};
 use bollard::Docker;
 use clap::Parser;
-use serde::{Deserialize, Serialize};
 use derive_more::Display;
+use log::info;
+use serde::{Deserialize, Serialize};
 
+mod docker;
 mod handlers;
 mod utils;
 
@@ -57,9 +58,19 @@ async fn main() -> std::io::Result<()> {
     let docker = Docker::connect_with_local_defaults().unwrap();
     info!(target:"pythonbox::docker", "connected to docker!");
 
-    // check we can ping
-    let docker_ping_result = docker.ping().await.unwrap();
-    info!(target:"docker", "docker ping: {}", docker_ping_result);
+    /*
+    let mut file = std::fs::File::open("testproj.tar.gz").unwrap();
+    let mut contents = Vec::new();
+    std::io::Read::read_to_end(&mut file, &mut contents).unwrap();
+
+    let x = docker::run_code(contents, 5.0, 100 * 0x100000, 10 * 0x100000, docker.clone())
+        .await
+        .unwrap();
+
+    println!("stdout: {}", String::from_utf8_lossy(&x.stdout));
+    println!("stderr: {}", String::from_utf8_lossy(&x.stderr));
+    println!("exit code: {:?}", x.exit_code);
+    */
 
     // start server
     HttpServer::new(move || {
