@@ -63,7 +63,7 @@ async fn main() -> std::io::Result<()> {
     let mut contents = Vec::new();
     std::io::Read::read_to_end(&mut file, &mut contents).unwrap();
 
-    let x = docker::run_code(contents, 5.0, 100 * 0x100000, 10 * 0x100000, docker.clone())
+    let x = docker::run_code(contents, 5.0, 100 * 0x100000, docker.clone())
         .await
         .unwrap();
 

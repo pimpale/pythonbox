@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use bollard::{
     container::{
         Config, CreateContainerOptions, KillContainerOptions, LogOutput, LogsOptions,
         RemoveContainerOptions, StartContainerOptions, UpdateContainerOptions,
         UploadToContainerOptions,
     },
-    models::ContainerState,
+    models::{ContainerState, HostConfig},
     Docker,
 };
 use log::{error, info};
@@ -23,7 +25,6 @@ pub async fn run_code(
     env_tar: Vec<u8>,
     max_time_s: f32,
     max_memory: i64,
-    max_disk: i64,
     docker: Docker,
 ) -> Result<RunCodeResponse, AppError> {
     info!(target: "pythonbox::run_code", "recieved request");
@@ -41,11 +42,15 @@ pub async fn run_code(
                 cmd: Some(vec!["/opt/run"]),
                 working_dir: Some("/opt"),
                 network_disabled: Some(true),
+                host_config: Some(HostConfig {
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
         )
         .await
-        .map_err(|_| {
+        .map_err(|x| {
+            dbg!(x);
             error!(target:"pythonbox::docker", "couldn't create container!");
             AppError::InternalServerError
         })?;

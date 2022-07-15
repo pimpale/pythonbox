@@ -35,15 +35,12 @@ pub async fn run_code(
     })?;
 
     // max memory = 100MB
-    // max disk = 10MB
     let max_memory_usage = 100 * 0x100000;
-    let max_disk_usage = 10 * 0x100000;
 
     let resp = docker::run_code(
         content,
         req.max_time,
         max_memory_usage,
-        max_disk_usage,
         docker.get_ref().clone(),
     )
     .await?;
