@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use bollard::{
     container::{
         Config, CreateContainerOptions, KillContainerOptions, LogOutput, LogsOptions,
-        RemoveContainerOptions, StartContainerOptions, UpdateContainerOptions,
+        StartContainerOptions, UpdateContainerOptions,
         UploadToContainerOptions,
     },
     models::{ContainerState, HostConfig},
@@ -43,6 +41,7 @@ pub async fn run_code(
                 working_dir: Some("/opt"),
                 network_disabled: Some(true),
                 host_config: Some(HostConfig {
+                    auto_remove: Some(true),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -50,8 +49,7 @@ pub async fn run_code(
         )
         .await
         .map_err(|x| {
-            dbg!(x);
-            error!(target:"pythonbox::docker", "couldn't create container!");
+            error!(target:"pythonbox::docker", "couldn't create container! reason: {}", x);
             AppError::InternalServerError
         })?;
 
@@ -70,8 +68,8 @@ pub async fn run_code(
             },
         )
         .await
-        .map_err(|_| {
-            error!(target:"pythonbox::docker", "couldn't set resource usage limits!");
+        .map_err(|x| {
+            error!(target:"pythonbox::docker", "couldn't set resource usage limits! reason:{}", x);
             AppError::InternalServerError
         })?;
 
@@ -88,8 +86,8 @@ pub async fn run_code(
             env_tar.into(),
         )
         .await
-        .map_err(|_| {
-            error!(target:"pythonbox::docker", "couldn't upload data!");
+        .map_err(|x| {
+            error!(target:"pythonbox::docker", "couldn't upload data! reason: {}", x);
             AppError::InternalServerError
         })?;
 
@@ -103,8 +101,7 @@ pub async fn run_code(
         )
         .await
         .map_err(|x| {
-            dbg!(x);
-            error!(target:"pythonbox::docker", "couldn't start container!");
+            error!(target:"pythonbox::docker", "couldn't start container! reason: {}", x);
             AppError::InternalServerError
         })?;
 
@@ -127,8 +124,8 @@ pub async fn run_code(
                 )
                 .await;
             info!(target:"pythonbox::run_code", "attempted to kill {}", container_name.as_str());
-            if let Err(e) = result {
-                info!(target:"pythonbox::run_code", "kill attempt failed, probably because already dead or removed {}", container_name.as_str());
+            if let Err(x) = result {
+                info!(target:"pythonbox::run_code", "kill attempt failed for {}! reason {}", container_name.as_str(), x);
             }
         });
     }
@@ -174,22 +171,6 @@ pub async fn run_code(
             None => None,
         },
     };
-
-    // remove container
-    docker
-        .remove_container(
-            container_name.as_str(),
-            Some(RemoveContainerOptions {
-                force: true,
-                v: true,
-                ..Default::default()
-            }),
-        )
-        .await
-        .map_err(|_| {
-            error!(target:"pythonbox::docker", "couldn't remove container!");
-            AppError::InternalServerError
-        })?;
 
     return Ok(response);
 }

@@ -1,3 +1,3 @@
 #!/bin/bash
 ./target/debug/pythonbox \
-  --port=8080
+  --port=8075

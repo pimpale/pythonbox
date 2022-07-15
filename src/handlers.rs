@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunCodeRequest {
     pub base_64_tar_gz: String,
-    pub max_time: f32,
+    pub max_time_s: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -39,7 +39,7 @@ pub async fn run_code(
 
     let resp = docker::run_code(
         content,
-        req.max_time,
+        req.max_time_s,
         max_memory_usage,
         docker.get_ref().clone(),
     )
