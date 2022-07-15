@@ -1,7 +1,7 @@
 use bollard::{
     container::{
         Config, CreateContainerOptions, KillContainerOptions, LogOutput, LogsOptions,
-        StartContainerOptions, UpdateContainerOptions,
+        RemoveContainerOptions, StartContainerOptions, UpdateContainerOptions,
         UploadToContainerOptions,
     },
     models::{ContainerState, HostConfig},
@@ -17,6 +17,26 @@ pub struct RunCodeResponse {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
     pub exit_code: Option<i64>,
+}
+
+// for failures, try removing the contaier
+pub async fn try_remove_container(name: &str, docker: Docker) {
+    let result = docker
+        .remove_container(
+            name,
+            Some(RemoveContainerOptions {
+                force: true,
+                v: true,
+                ..Default::default()
+            }),
+        )
+        .await;
+
+    if let Err(x) = result {
+        error!(target:"pythonbox::docker", "couldn't remove {}! reason:{}", name, x);
+    } else {
+        info!(target:"pythonbox::docker", "removed {}!", name);
+    }
 }
 
 pub async fn run_code(
@@ -56,7 +76,7 @@ pub async fn run_code(
     info!(target:"pythonbox::run_code", "created container {}", container_name.as_str());
 
     // set resource usage limits
-    docker
+    let result = docker
         .update_container(
             container_name.as_str(),
             UpdateContainerOptions::<String> {
@@ -67,16 +87,18 @@ pub async fn run_code(
                 ..Default::default()
             },
         )
-        .await
-        .map_err(|x| {
-            error!(target:"pythonbox::docker", "couldn't set resource usage limits! reason:{}", x);
-            AppError::InternalServerError
-        })?;
+        .await;
+
+    if let Err(x) = result {
+        error!(target:"pythonbox::docker", "couldn't set resource usage limits! reason:{}", x);
+        try_remove_container(container_name.as_str(), docker).await;
+        return Err(AppError::InternalServerError);
+    }
 
     info!(target:"pythonbox::run_code", "limited container {}", container_name.as_str());
 
     // upload our tar.gz to the container
-    docker
+    let result = docker
         .upload_to_container(
             container_name.as_str(),
             Some(UploadToContainerOptions {
@@ -85,25 +107,29 @@ pub async fn run_code(
             }),
             env_tar.into(),
         )
-        .await
-        .map_err(|x| {
-            error!(target:"pythonbox::docker", "couldn't upload data! reason: {}", x);
-            AppError::InternalServerError
-        })?;
+        .await;
+
+    if let Err(x) = result {
+        error!(target:"pythonbox::docker", "couldn't upload data! reason: {}", x);
+        try_remove_container(container_name.as_str(), docker).await;
+        return Err(AppError::InternalServerError);
+    }
 
     info!(target:"pythonbox::run_code", "uploaded code to container {}", container_name.as_str());
 
     // start container
-    docker
+    let result = docker
         .start_container(
             container_name.as_str(),
             None::<StartContainerOptions<String>>,
         )
-        .await
-        .map_err(|x| {
-            error!(target:"pythonbox::docker", "couldn't start container! reason: {}", x);
-            AppError::InternalServerError
-        })?;
+        .await;
+
+    if let Err(x) = result {
+        error!(target:"pythonbox::docker", "couldn't start container! reason: {}", x);
+        try_remove_container(container_name.as_str(), docker).await;
+        return Err(AppError::InternalServerError);
+    }
 
     info!(target:"pythonbox::run_code", "started container {}", container_name.as_str());
 
