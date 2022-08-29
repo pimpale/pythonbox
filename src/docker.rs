@@ -43,6 +43,7 @@ pub async fn run_code(
     env_tar: Vec<u8>,
     max_time_s: f32,
     max_memory: i64,
+    image: String,
     docker: Docker,
 ) -> Result<RunCodeResponse, AppError> {
     info!(target: "pythonbox::run_code", "recieved request");
@@ -56,9 +57,9 @@ pub async fn run_code(
                 name: container_name.as_str(),
             }),
             Config {
-                image: Some("frolvlad/alpine-python3"),
-                cmd: Some(vec!["/opt/run"]),
-                working_dir: Some("/opt"),
+                image: Some(image),
+                cmd: Some(vec![String::from("/opt/run")]),
+                working_dir: Some(String::from("/opt")),
                 network_disabled: Some(true),
                 host_config: Some(HostConfig {
                     ..Default::default()
