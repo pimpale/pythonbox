@@ -55,6 +55,7 @@ pub async fn run_code(
         .create_container(
             Some(CreateContainerOptions {
                 name: container_name.as_str(),
+                platform: None,
             }),
             Config {
                 image: Some(image),
